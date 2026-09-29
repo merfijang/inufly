@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-remote/
+dist-vercel/
+coverage/
+*.tsbuildinfo
+data/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db

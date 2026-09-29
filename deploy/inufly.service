@@ -1,0 +1,26 @@
+[Unit]
+Description=InuFly fly server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=inufly
+WorkingDirectory=/opt/inufly
+EnvironmentFile=/etc/inufly.env
+ExecStart=/usr/local/bin/node /opt/inufly/node_modules/tsx/dist/cli.mjs server/main.ts
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=15
+# The box is shared with a real-time fly (FlappyFly): this one computes its runs ahead of time,
+# so it takes only the CPU left over and never slows the other one down.
+Nice=19
+CPUWeight=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/inufly
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2022"], "types": ["node"], "noEmit": true },
+  "include": ["server", "src/core", "src/shared", "src/game"],
+  "exclude": ["**/*.test.ts"]
+}
