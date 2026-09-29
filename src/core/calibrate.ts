@@ -10,18 +10,18 @@ export interface CalibrationOptions { steps?: number; perHead?: number; seed?: n
 /** `weights[a]`: the starting weight of each group action `a` reads, in head order. */
 export interface Calibration { readout: Readout; weights: number[][] }
 
-const EPISODE = 75; // 1.5 s: one obstacle approaching from the horizon to the dog
+const EPISODE = 50; // 1 s: one obstacle approaching from the horizon to the dog
 
 /**
- * Each action reads two kinds of population: ones that follow what calls for it (a barrier ahead
- * for the jump, a train ahead for a lane change) and, for a lane change, ones that tell the free
- * side from the blocked one (they follow one side's LPLC2 input more than the other side's).
+ * Each action reads populations that follow what calls for it: something to jump for the jump,
+ * something to roll under for the roll, and for a lane change, a train ahead plus populations that
+ * tell the free side from the blocked one (they follow one side's LPLC2 input more than the other's).
  * Weights start at the measured correlation, signed so the action is favoured when it is right.
  */
 export function calibrateReadout(brain: Connectome, groups: SensoryGroups, meta: NeuronMeta, opts: CalibrationOptions = {}): Calibration {
-  const { steps = 4500, perHead = 8, seed = 1, minCells = MIN_GROUP_CELLS } = opts;
+  const { steps = 5000, perHead = 8, seed = 1, minCells = MIN_GROUP_CELLS } = opts;
   const dn = readableGroups(meta, minCells), G = dn.names.length;
-  const Q: ((x: Senses) => number)[] = [(x) => x.barrier, (x) => x.train, (x) => x.leftBlocked, (x) => x.rightBlocked];
+  const Q: ((x: Senses) => number)[] = [(x) => x.jump, (x) => x.roll, (x) => x.train, (x) => x.leftBlocked, (x) => x.rightBlocked];
   const rates = new Float32Array(G), traces = new Float32Array(G);
   const sum = new Float64Array(G), sq = new Float64Array(G), sxy = Q.map(() => new Float64Array(G));
   const sy = new Float64Array(Q.length), syy = new Float64Array(Q.length);
@@ -31,9 +31,12 @@ export function calibrateReadout(brain: Connectome, groups: SensoryGroups, meta:
   brain.reset(seed);
   for (let i = 0; i < steps; i++) {
     const u = (i % EPISODE) / EPISODE;
-    if (i % EPISODE === 0) { kind = Math.floor(rand() * 3); left = rand() < 0.5 ? 1 : 0; right = rand() < 0.5 ? 1 : 0; }
-    // an obstacle ramps in over the episode; the side lanes are independently free or blocked
-    const x: Senses = { barrier: kind === 1 ? u : 0, train: kind === 2 ? u : 0, leftBlocked: left, rightBlocked: right };
+    // nothing, a low barrier, a high barrier, a roadblock, a train; the side lanes independently free or blocked
+    if (i % EPISODE === 0) { kind = Math.floor(rand() * 5); left = rand() < 0.5 ? 1 : 0; right = rand() < 0.5 ? 1 : 0; }
+    const x: Senses = {
+      jump: kind === 1 || kind === 3 ? u : 0, roll: kind === 2 || kind === 3 ? u : 0, train: kind === 4 ? u : 0,
+      leftBlocked: left, rightBlocked: right
+    };
     sense(brain, groups, x);
     brain.step(); readRates(brain, dn.ids, rates);
     for (let k = 0; k < G; k++) traces[k] = TRACE_KEEP * traces[k] + (1 - TRACE_KEEP) * rates[k];
@@ -48,7 +51,7 @@ export function calibrateReadout(brain: Connectome, groups: SensoryGroups, meta:
     const my = sy[q] / n, sdy = Math.sqrt(Math.max(1e-9, syy[q] / n - my * my));
     return Float64Array.from(dn.names, (_, k) => (std[k] > 0.003 ? (sxy[q][k] / n - mean[k] * my) / (std[k] * sdy) : 0));
   });
-  const [BARRIER, TRAIN, LEFT, RIGHT] = [0, 1, 2, 3];
+  const [JUMP, ROLL, TRAIN, LEFT, RIGHT] = [0, 1, 2, 3, 4];
   /** the `count` live groups scoring highest by |score|, with the score as the starting weight */
   const top = (score: (k: number) => number, count: number, skip = new Set<number>()) =>
     live.filter((k) => !skip.has(k)).sort((a, b) => Math.abs(score(b)) - Math.abs(score(a))).slice(0, count).map((k) => ({ k, w: score(k) }));
@@ -56,10 +59,12 @@ export function calibrateReadout(brain: Connectome, groups: SensoryGroups, meta:
   const trainGroups = top((k) => c[TRAIN][k], half);
   // blocked on the left and not on the right → discourage left; the sign flips for the right head
   const sideGroups = top((k) => c[LEFT][k] - c[RIGHT][k], half, new Set(trainGroups.map((g) => g.k)));
+  // the jump and the roll each favour what follows their own cue more than the other's
   const picks = [
     [...trainGroups, ...sideGroups.map((g) => ({ k: g.k, w: -g.w }))],
     [...trainGroups, ...sideGroups],
-    top((k) => c[BARRIER][k], perHead)
+    top((k) => c[JUMP][k] - 0.5 * c[ROLL][k], perHead),
+    top((k) => c[ROLL][k] - 0.5 * c[JUMP][k], perHead)
   ];
   const names: string[] = [], index = new Map<number, number>();
   const heads = picks.map((gs) => gs.map((g) => {

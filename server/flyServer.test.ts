@@ -4,8 +4,8 @@ import { tinyBrain } from '../src/core/testing';
 import type { ServerMessage } from '../src/shared/protocol';
 import { FlyServer, freshState, type PersistedState } from './flyServer';
 
-const readout = { names: ['DNp01 L', 'DNa02 L', 'DNa02 R'], mean: [0, 0, 0], std: [1, 1, 1], heads: [[1], [2], [0]] };
-const quiet = [0, -20, 0, -20, 0, -20];
+const readout = { names: ['DNp01 L', 'DNa02 L', 'DNa02 R', 'DNa07 L'], mean: [0, 0, 0, 0], std: [1, 1, 1, 1], heads: [[1], [2], [0], [3]] };
+const quiet = [0, -20, 0, -20, 0, -20, 0, -20];
 
 function setup(extra: Partial<ConstructorParameters<typeof FlyServer>[0]> = {}) {
   const brain = tinyBrain(), msgs: ServerMessage[] = [], bins: Uint8Array[] = [], saves: PersistedState[] = [];
@@ -42,7 +42,7 @@ describe('FlyServer', () => {
     for (let i = 0; i < 100000 && !of('attempt_end').length; i++) fly.playTick();
     const end = of('attempt_end')[0], frames = of('frame');
     expect(frames.length).toBe(Math.round(end.record.seconds / 0.02));
-    expect(end.record.metres).toBeGreaterThan(40); // the first obstacle is 45 m out; a silent dog hits it
+    expect(end.record.metres).toBeGreaterThan(35); // the first obstacle is 40 m out; a silent dog hits it
     expect(end.record.metres).toBe(Math.round(frames.at(-1)!.z * 10) / 10);
     expect(fly.stats()).toMatchObject({ queue: 0, running: false });
   });

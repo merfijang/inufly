@@ -55,6 +55,8 @@ export class Connectome {
   readonly n: number;
   readonly v: Float32Array; readonly spiked: Uint8Array;
   private readonly drive: Float32Array; private readonly current: Float32Array; private readonly fired: Int32Array;
+  /** the signed weight of every synapse, decoded once: 25 M lookups a step are the hot loop */
+  private readonly weight: Float32Array;
   firedCount = 0; totalSpikes = 0; private rng = 1;
 
   constructor(readonly meta: NeuronMeta, private readonly w: SparseWeights, seed = 1) {
@@ -62,6 +64,8 @@ export class Connectome {
     this.n = meta.n;
     this.v = new Float32Array(this.n); this.spiked = new Uint8Array(this.n);
     this.drive = new Float32Array(this.n); this.current = new Float32Array(this.n); this.fired = new Int32Array(this.n);
+    this.weight = new Float32Array(w.nnz);
+    for (let e = 0; e < w.nnz; e++) this.weight[e] = w.lut[w.code[e]];
     this.reset(seed);
   }
 
@@ -76,16 +80,20 @@ export class Connectome {
 
   /** Advance one dt. Returns the neurons that fired this step (a view, valid until the next step). */
   step(): Int32Array {
-    const { colPtr, rowIdx, code, lut } = this.w, current = this.current, fired = this.fired;
+    const { colPtr, rowIdx } = this.w, weight = this.weight, current = this.current, fired = this.fired, drive = this.drive;
     current.fill(0);
-    for (let k = 0; k < this.firedCount; k++) { const j = fired[k]; for (let e = colPtr[j]; e < colPtr[j + 1]; e++) current[rowIdx[e]] += lut[code[e]]; }
+    for (let k = 0; k < this.firedCount; k++) { const j = fired[k], end = colPtr[j + 1]; for (let e = colPtr[j]; e < end; e++) current[rowIdx[e]] += weight[e]; }
     const p = this.meta.params, decay = Math.exp(-p.dt / p.tau), pNoise = p.noise_hz * p.dt;
+    // noise: each neuron gets a kick with probability pNoise; jump straight from one kicked neuron
+    // to the next (geometric gaps) instead of drawing a number for every neuron
+    const logMiss = Math.log(1 - pNoise), gap = () => Math.floor(Math.log(1 - this.random()) / logMiss);
+    if (pNoise > 0) for (let i = gap(); i < this.n; i += 1 + gap()) drive[i] += p.noise_amp;
+    const gain = p.gain, tonic = p.tonic, v = this.v, spiked = this.spiked;
     let count = 0;
     for (let i = 0; i < this.n; i++) {
-      let x = decay * this.v[i] + p.gain * current[i] + p.tonic + this.drive[i];
-      if (this.random() < pNoise) x += p.noise_amp;
-      if (x >= 1) { fired[count++] = i; this.spiked[i] = 1; x = 0; } else this.spiked[i] = 0;
-      this.v[i] = x; this.drive[i] = 0;
+      let x = decay * v[i] + gain * current[i] + tonic + drive[i];
+      if (x >= 1) { fired[count++] = i; spiked[i] = 1; x = 0; } else spiked[i] = 0;
+      v[i] = x; drive[i] = 0;
     }
     this.firedCount = count; this.totalSpikes += count;
     return fired.subarray(0, count);

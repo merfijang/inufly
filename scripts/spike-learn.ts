@@ -13,19 +13,19 @@ console.log(`loaded in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 const t1 = performance.now();
 const cal = calibrateReadout(brain, groups, brain.meta);
 console.log(`calibrated in ${((performance.now() - t1) / 1000).toFixed(1)} s`);
-['left', 'right', 'jump'].forEach((a, h) => console.log(a, cal.readout.heads[h].map((k, j) => `${cal.readout.names[k]}(${cal.weights[h][j].toFixed(2)})`).join(' ')));
+['left', 'right', 'jump', 'roll'].forEach((a, h) => console.log(a, cal.readout.heads[h].map((k, j) => `${cal.readout.names[k]}(${cal.weights[h][j].toFixed(2)})`).join(' ')));
 const policy = new NeuralPolicy(brain, groups, cal.readout);
 
 function run(theta: number[], seed: number) {
   const g = new RunnerGame(seed); policy.begin(theta, seed);
-  const acts = { left: 0, right: 0, jump: 0 };
+  const acts = { left: 0, right: 0, jump: 0, roll: 0 };
   while (g.state.alive && g.state.t < CAP) { const d = policy.tick(g, g.state.t * 1000); if (d.action) acts[d.action]++; g.update(0.02); }
   return { z: g.state.z, cause: g.state.cause, acts };
 }
 const zero = new Array(paramCount(cal.readout)).fill(0).map((_, i, a) => 0);
 for (const [name, th] of [['init', initialTheta(cal)], ["quiet", initialTheta(cal, 0, -5)]] as const) {
   const r = [11, 22, 33].map((s) => run(th as number[], s));
-  console.log(name, r.map((x) => `${x.z.toFixed(0)}m ${x.cause} L${x.acts.left} R${x.acts.right} J${x.acts.jump}`).join(' | '));
+  console.log(name, r.map((x) => `${x.z.toFixed(0)}m ${x.cause} L${x.acts.left} R${x.acts.right} J${x.acts.jump} D${x.acts.roll}`).join(' | '));
 }
 const tr = new Trainer(initialTrainer(initialTheta(cal)));
 let steps = 0; const ts = performance.now();

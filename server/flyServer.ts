@@ -16,7 +16,8 @@ import type { FeeEvent, WatcherCursor } from './fees/solanaWatcher';
 import { initialTrainer, Trainer, type Sample, type TrainerState } from './trainer';
 
 export interface PersistedState {
-  version: 1; trainer: TrainerState; readout: Readout;
+  /** 2: Subway Surfers obstacles, four moves (left, right, jump, roll). */
+  version: 2; trainer: TrainerState; readout: Readout;
   queue: number; pendingLamports: number; totalFeeLamports: number;
   attempts: number; bestMetres: number;
   watchers: Record<string, WatcherCursor>; balances: Record<string, number>; history: AttemptRecord[];
@@ -24,7 +25,7 @@ export interface PersistedState {
 
 export function freshState(readout: Readout, theta: number[]): PersistedState {
   return {
-    version: 1, trainer: initialTrainer(theta), readout,
+    version: 2, trainer: initialTrainer(theta), readout,
     queue: 0, pendingLamports: 0, totalFeeLamports: 0, attempts: 0, bestMetres: 0, watchers: {}, balances: {}, history: []
   };
 }
@@ -140,7 +141,8 @@ export class FlyServer {
     const { action, p } = this.policy.tick(g, g.state.t * 1000);
     g.update(STEP_SECONDS);
     const s = g.state;
-    const frame: Frame = { type: 'frame', t: +s.t.toFixed(2), z: +s.z.toFixed(2), x: +s.x.toFixed(3), y: +s.y.toFixed(2), p: [+p[0].toFixed(3), +p[1].toFixed(3), +p[2].toFixed(3)] };
+    const frame: Frame = { type: 'frame', t: +s.t.toFixed(2), z: +s.z.toFixed(2), x: +s.x.toFixed(3), y: +s.y.toFixed(2), p: p.map((q) => +q.toFixed(3)) };
+    if (g.rolling) frame.c = 1;
     if (action) frame.a = action;
     c.rec.frames.push(frame);
     this.collect(c.rec.activity, c.step);

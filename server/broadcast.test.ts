@@ -15,7 +15,7 @@ describe('server over WebSocket', () => {
     let fly: FlyServer | undefined;
     const out = new Broadcaster({ hello: () => fly!.hello(), stats: () => fly!.stats() });
     fly = new FlyServer({
-      brain, groups: buildGroups(brain.meta), state: freshState({ names: ['DNp01 L'], mean: [0], std: [1], heads: [[0], [0], [0]] }, [0, -20, 0, -20, 0, -20]), capSeconds: 1, pauseTicks: 0,
+      brain, groups: buildGroups(brain.meta), state: freshState({ names: ['DNp01 L'], mean: [0], std: [1], heads: [[0], [0], [0], [0]] }, [0, -20, 0, -20, 0, -20, 0, -20]), capSeconds: 1, pauseTicks: 0,
       lamportsPerAttempt: 100, feeSource: 'mock', feeWallets: [], save: () => undefined, out
     });
     const port = await out.listen(0);

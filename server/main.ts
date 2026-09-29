@@ -1,7 +1,9 @@
 // Entry point: `npm run server`. Loads the connectome, restores learning state, starts fees, the
 // compute loop (as fast as it is allowed) and the 50 Hz playback loop.
 import { buildGroups } from '../src/core/sensing';
+import { readFileSync } from 'node:fs';
 import { calibrateReadout, initialTheta } from '../src/core/calibrate';
+import { ACTIONS } from '../src/core/policy';
 import { loadBrain } from './brainFiles';
 import { Broadcaster } from './broadcast';
 import { readConfig } from './config';
@@ -19,12 +21,19 @@ log('loading connectome from', cfg.brainDir);
 const brain = loadBrain(cfg.brainDir), groups = buildGroups(brain.meta);
 log(`connectome ready: ${brain.n.toLocaleString()} neurons`);
 
-let state = loadState<PersistedState>(cfg.stateFile, () => ({ version: 1 }) as PersistedState);
+// a state file from an older version of the game: the learning does not carry over, the money does
+const older = (() => { try { const s = JSON.parse(readFileSync(cfg.stateFile, 'utf8')); return s?.version !== 2 ? s as Partial<PersistedState> : null; } catch { return null; } })();
+let state = loadState<PersistedState>(cfg.stateFile, () => ({ version: 2 }) as PersistedState);
 if (!state.trainer || !state.readout) {
-  log('first start: measuring which neurons to read left, right and jump from (~1 min)');
+  log('first start: measuring which neurons to read left, right, jump and roll from (~1 min)');
   const cal = calibrateReadout(brain, groups, brain.meta, { perHead: cfg.perAction });
-  ['left', 'right', 'jump'].forEach((a, h) => log(`${a}: ${cal.readout.heads[h].map((k) => cal.readout.names[k]).join(', ')}`));
+  ACTIONS.forEach((a, h) => log(`${a}: ${cal.readout.heads[h].map((k) => cal.readout.names[k]).join(', ')}`));
   state = freshState(cal.readout, initialTheta(cal));
+  if (older) {
+    const { queue = 0, pendingLamports = 0, totalFeeLamports = 0, watchers = {}, balances = {} } = older;
+    Object.assign(state, { queue, pendingLamports, totalFeeLamports, watchers, balances });
+    log(`carried over from the previous game: ${queue} paid attempts, ${totalFeeLamports / 1e9} SOL of fees, fee watcher positions`);
+  }
   saveState(cfg.stateFile, state);
 }
 log(`state: ${state.attempts} attempts, generation ${state.trainer.generation}, queue ${state.queue}`);

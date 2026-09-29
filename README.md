@@ -1,15 +1,16 @@
 # InuFly
 
-A real fruit-fly brain (the full FlyEM MaleCNS v1.0 connectome, 166,700 neurons) runs a Shiba Inu down a stripped-down Subway Surfers track: three lanes, barriers to jump, walls to jump, trains to dodge. It only gets a run when the token's trading fees pay for one: every `SOL_PER_ATTEMPT` SOL of creator fees is one run, and every run is one sample of an evolution strategy over the fly's readout, so the dog really learns from the runs traders pay for. Everyone watches the same dog at inufly.xyz.
+A real fruit-fly brain (the full FlyEM MaleCNS v1.0 connectome, 166,700 neurons) runs a Shiba Inu down a stripped-down Subway Surfers track: three lanes, the obstacles of the original game (low barriers, roadblocks, high barriers, parked trains, trains with ramps onto their roofs, oncoming trains), and a dog that keeps speeding up. It only gets a run when the token's trading fees pay for one: every `SOL_PER_ATTEMPT` SOL of creator fees is one run, and every run is one sample of an evolution strategy over the fly's readout, so the dog really learns from the runs traders pay for. Everyone watches the same dog at inufly.xyz.
 
 Built on [alextitonis/fly.ai](https://github.com/alextitonis/fly.ai) (connectome export and simulation) and FlappyFly (fee watcher, trainer, live stream).
 
 ## What is real
 
-- Connectome weights are frozen. 27 numbers learn: for each of left, right and jump, 8 readout weights and a bias.
+- Connectome weights are frozen. 36 numbers learn: for each of left, right, jump and roll, 8 readout weights and a bias.
 - The dog sees the track only through the fly's own visual neurons, one quantity per population and on the side where it is:
-  - a low barrier or wall ahead in its lane → LC4 (the looming cells that drive the giant-fibre escape jump),
-  - a train ahead in its lane → LPLC1,
+  - something to jump in its lane (low barrier, roadblock) → LC4 (the looming cells that drive the giant-fibre escape jump),
+  - something to roll under (high barrier, roadblock) → LC6,
+  - a train in its lane, parked or oncoming → LPLC1,
   - the lane to the left / right blocked by a train or the track edge → LPLC2 on that side.
 - Which populations each move is read from is measured at the first start (`src/core/calibrate.ts`): the jump reads the 8 cell types that follow the barrier signal most closely; a lane change reads 4 that follow the train signal and 4 that tell a blocked left from a blocked right.
 - Learning: antithetic ES (`server/trainer.ts`). The two halves of a pair run the same course with the same noise, and only the difference between them counts, so how hard a course was cancels out.

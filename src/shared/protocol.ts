@@ -13,8 +13,8 @@ export interface Stats {
 /** The site rebuilds the course from `seed` and `course` with the same generator the server runs. */
 export interface AttemptStart { type: 'attempt_start'; n: number; generation: number; sample: number; pop: number; seed: number; course: Course }
 
-/** One 20 ms step of the dog. `a`: the action the fly took this step, if any. `p`: left, right, jump. */
-export interface Frame { type: 'frame'; t: number; z: number; x: number; y: number; a?: 'left' | 'right' | 'jump'; p: [number, number, number] }
+/** One 20 ms step of the dog. `a`: the action the fly took this step, if any. `p`: left, right, jump, roll. `c`: rolling. */
+export interface Frame { type: 'frame'; t: number; z: number; x: number; y: number; a?: 'left' | 'right' | 'jump' | 'roll'; c?: 1; p: number[] }
 
 export type ServerMessage =
   | { type: 'hello'; stats: Stats; history: AttemptRecord[]; current: AttemptStart | null; displayCount: number; readoutGroups: string[] }

@@ -35,7 +35,7 @@ export class SiteApp {
   private lastEnd: AttemptRecord | null = null;
   private running = false;
   private idleTimer = 0;
-  private readonly flash = [0, 0, 0];
+  private readonly flash = [0, 0, 0, 0];
 
   constructor(root: HTMLElement) {
     root.innerHTML = TEMPLATE;
@@ -100,11 +100,11 @@ export class SiteApp {
   }
 
   /** Distance and the three readouts, lit when the fly acts on one. */
-  private hud(z: number, p: [number, number, number], a?: string) {
+  private hud(z: number, p: number[], a?: string) {
     this.$('hudMetres').textContent = metres(z);
-    const idx = a === 'left' ? 0 : a === 'right' ? 1 : a === 'jump' ? 2 : -1;
+    const idx = ['left', 'right', 'jump', 'roll'].indexOf(a ?? '');
     if (idx >= 0) this.flash[idx] = 1;
-    ['pLeft', 'pRight', 'pJump'].forEach((id, k) => {
+    ['pLeft', 'pRight', 'pJump', 'pRoll'].forEach((id, k) => {
       const el = this.$(id);
       el.style.setProperty('--p', String(p[k]));
       el.classList.toggle('fired', this.flash[k] > 0.5);
@@ -206,7 +206,7 @@ const TEMPLATE = `
     <div class="intro">
       <p class="eyebrow">male CNS v1.0 · 166,700 neurons · 25,088,107 connections</p>
       <h1>A fly brain <em>runs a dog</em></h1>
-      <p class="lede">A real fruit-fly connectome steers a Shiba Inu down three lanes of track. It only gets a run when trading fees pay for one, and every run teaches it to go a little further.</p>
+      <p class="lede">A real fruit-fly connectome steers a Shiba Inu through the obstacles of Subway Surfers, faster and faster. It only gets a run when trading fees pay for one, and every run teaches it to go a little further.</p>
     </div>
     <div class="stage">
       <figure class="arena">
@@ -217,6 +217,7 @@ const TEMPLATE = `
             <div class="moves">
               <span class="move" id="pLeft"><b>Left</b><i></i></span>
               <span class="move" id="pJump"><b>Jump</b><i></i></span>
+              <span class="move" id="pRoll"><b>Roll</b><i></i></span>
               <span class="move" id="pRight"><b>Right</b><i></i></span>
             </div>
           </div>
@@ -274,11 +275,11 @@ const TEMPLATE = `
       </div>
       <div>
         <h3>How it sees and moves</h3>
-        <p>The track reaches the fly on its own visual cells: a low barrier ahead on LC4, the looming cells that trigger its escape jump; a train ahead on LPLC1; a blocked lane on the left or right on LPLC2 of that side. Left, right and jump are each read from eight populations deeper in the brain, measured to follow those signals.</p>
+        <p>The track reaches the fly on its own visual cells: something to jump on LC4, the looming cells that trigger its escape jump; something to roll under on LC6; a train ahead, parked or oncoming, on LPLC1; a blocked lane on the left or right on LPLC2 of that side. Left, right, jump and roll are each read from eight populations deeper in the brain, measured to follow those signals.</p>
       </div>
       <div>
         <h3>How trading teaches it</h3>
-        <p>Every <span id="price">0.001</span> SOL of fees buys one run. Each run uses a slightly changed readout of those populations. After ten runs the fly keeps what went further. Twenty-seven numbers learn; nothing about the running is scripted.</p>
+        <p>Every <span id="price">0.001</span> SOL of fees buys one run. Each run uses a slightly changed readout of those populations. After ten runs the fly keeps what went further. Thirty-six numbers learn; nothing about the running is scripted.</p>
       </div>
     </div>
     <p class="honest">This is an experiment, not a claim that a fly understands trains. The way the track reaches its eyes and the way a move is read out are designed interfaces. When the dog runs badly, you are watching it run badly.</p>

@@ -1,7 +1,7 @@
 // Test helper: a tiny hand-built connectome with the neuron types the sensing code looks for.
 import { Connectome, type NeuronMeta, type SparseWeights } from './connectome';
 
-const TYPES = ['LC4', 'LPLC1', 'LPLC2', 'DNa02', 'DNg111', 'DNp01', 'DNa07'];
+const TYPES = ['LC4', 'LC6', 'LPLC1', 'LPLC2', 'DNa02', 'DNg111', 'DNp01', 'DNa07'];
 
 /** One neuron of every type per side, no synapses, no noise, no tonic drive. */
 export function tinyBrain(seed = 1) {

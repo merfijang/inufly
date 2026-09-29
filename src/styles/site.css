@@ -123,7 +123,7 @@ h3 { font-size: 26px; margin-bottom: 8px; }
   .top { flex-wrap: wrap; gap: 8px 16px; padding-top: 14px; padding-bottom: 14px; }
   .links { margin-left: 0; width: 100%; gap: 16px; }
   .hud { flex-direction: column; }
-  .move { width: 56px; }
+  .move { width: 50px; padding: 6px; }
   .ca-strip { flex-direction: column; align-items: flex-start; padding: 16px; }
   .figures dd { font-size: 28px; }
   h2 { font-size: 32px; }
