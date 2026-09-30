@@ -7,7 +7,9 @@ import type { AttemptStart, Frame } from '../shared/protocol';
 
 const LANE_W = 2.4;
 const COLORS = { ground: 0x06070a, green: 0x3dff88, greenFaint: 0x155c33, amber: 0xf0bc5f, cyan: 0x7deaff, red: 0xff5a4e, steel: 0x2a303b };
-const AHEAD = 190, BEHIND = 12, TRACK_PERIOD = 4, SCENERY_EVERY = 12;
+const AHEAD = 190, BEHIND = 12, TRACK_PERIOD = 4, SCENERY_EVERY = 12, SCENERY_SLOTS = 20;
+/** How far behind the newest frame the view runs, seconds: enough to ride out bursty delivery. */
+const PLAYBACK_DELAY = 0.3;
 
 type Clip = 'Idle' | 'Gallop' | 'Gallop_Jump' | 'Death';
 
@@ -55,7 +57,13 @@ export class Runner3D {
   private readonly clips = new Map<Clip, THREE.AnimationAction>();
   private clip: Clip | null = null;
   private course: CourseGen | null = null;
-  private last: Frame | null = null; private prev: Frame | null = null; private lastAt = 0;
+  /** the newest frame shown, frames waiting to be shown, and the playback clock (attempt seconds) */
+  private last: Frame | null = null;
+  private buffer: Frame[] = [];
+  private shownT = -1;
+  private clockT = -1; private ending = false; private idleTimer = 0;
+  /** called as each frame reaches the screen */
+  onShow: ((f: Frame) => void) | null = null;
   private shown = { z: 0, x: 0, y: 0, t: 0, crouch: 0 };
   private dead = false; private wasAir = false;
   private readonly clock = new THREE.Clock();
@@ -103,24 +111,40 @@ export class Runner3D {
     this.renderer.setAnimationLoop(() => this.render());
   }
 
-  /** Posts, lamps and blocky buildings along both sides; they scroll with the track. */
+  /**
+   * Posts, lamps and blocky buildings along both sides. Every 12 m slot of the track has its own
+   * building, fixed in the world; a slot that falls behind the camera is reused for one far ahead.
+   */
   private buildScenery() {
-    const m = this.mat, rnd = (i: number) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
-    for (let i = 0; i < Math.ceil(360 / SCENERY_EVERY); i++) {
+    const m = this.mat, unit = new THREE.BoxGeometry(1, 1, 1), unitEdges = new THREE.EdgesGeometry(unit);
+    const postGeo = new THREE.BoxGeometry(0.16, 3.4, 0.16), lampGeo = new THREE.BoxGeometry(0.5, 0.08, 0.2);
+    for (let j = 0; j < SCENERY_SLOTS; j++) {
       for (const side of [-1, 1]) {
-        const z = -i * SCENERY_EVERY;
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.4, 0.16), m.post);
-        post.position.set(side * (LANE_W * 1.5 + 0.7), 1.7, z);
-        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.2), m.lampPost);
-        lamp.position.set(side * (LANE_W * 1.5 + 0.45), 3.4, z);
-        this.scenery.add(post, lamp);
-        const h = 4 + rnd(i * 2 + (side > 0 ? 1 : 0)) * 14, w = 5 + rnd(i * 3 + side) * 6;
-        const geo = new THREE.BoxGeometry(w, h, SCENERY_EVERY * 0.8);
-        const house = new THREE.Mesh(geo, m.scenery);
-        house.position.set(side * (LANE_W * 1.5 + 4 + w / 2 + rnd(i) * 3), h / 2, z - SCENERY_EVERY / 2);
-        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), m.sceneryEdge);
-        edges.position.copy(house.position);
-        this.scenery.add(house, edges);
+        const g = new THREE.Group();
+        const post = new THREE.Mesh(postGeo, m.post); post.position.set(side * (LANE_W * 1.5 + 0.7), 1.7, 0);
+        const lamp = new THREE.Mesh(lampGeo, m.lampPost); lamp.position.set(side * (LANE_W * 1.5 + 0.45), 3.4, 0);
+        const house = new THREE.Mesh(unit, m.scenery), edges = new THREE.LineSegments(unitEdges, m.sceneryEdge);
+        g.add(post, lamp, house, edges);
+        g.userData = { slot: j, side, k: NaN, house, edges };
+        this.scenery.add(g);
+      }
+    }
+  }
+
+  /** Put every scenery slot where it belongs for a dog at distance z. */
+  private placeScenery(z: number) {
+    const rnd = (i: number) => { const x = Math.sin(i * 127.1) * 43758.5453; return x - Math.floor(x); };
+    const base = Math.floor(z / SCENERY_EVERY) - 2;
+    for (const g of this.scenery.children) {
+      const d = g.userData as { slot: number; side: number; k: number; house: THREE.Mesh; edges: THREE.LineSegments };
+      const k = base + ((((d.slot - base) % SCENERY_SLOTS) + SCENERY_SLOTS) % SCENERY_SLOTS);
+      if (k === d.k) continue;
+      d.k = k;
+      g.position.z = -k * SCENERY_EVERY;
+      const seed = k * 2 + (d.side > 0 ? 1 : 0), h = 4 + rnd(seed) * 14, w = 5 + rnd(seed + 0.5) * 6;
+      for (const box of [d.house, d.edges]) {
+        box.scale.set(w, h, SCENERY_EVERY * 0.8);
+        box.position.set(d.side * (LANE_W * 1.5 + 4 + w / 2 + rnd(seed + 0.25) * 3), h / 2, -SCENERY_EVERY / 2);
       }
     }
   }
@@ -159,30 +183,28 @@ export class Runner3D {
 
   /** A new attempt: build its course and put the dog at the start. */
   start(a: AttemptStart) {
+    clearTimeout(this.idleTimer);
     this.course = new CourseGen(a.seed, a.course);
     this.course.ensure(AHEAD + 60);
     this.clearObstacles();
-    this.last = this.prev = null; this.shown = { z: 0, x: 0, y: 0, t: 0, crouch: 0 };
+    this.buffer = []; this.clockT = -1; this.ending = false; this.shownT = -1;
+    this.last = null; this.shown = { z: 0, x: 0, y: 0, t: 0, crouch: 0 };
     this.dead = false; this.wasAir = false;
     this.play('Gallop');
   }
 
-  frame(f: Frame) {
-    this.prev = this.last; this.last = f; this.lastAt = performance.now();
-    // running up a ramp or along a roof is running; only being off whatever is underneath is a jump
-    const air = !!this.course && f.y > this.course.surface(Math.round(f.x), f.z, f.t) + 0.1;
-    if (air && !this.wasAir) this.play('Gallop_Jump', 0.05);
-    if (!air && this.wasAir) this.play('Gallop', 0.1);
-    this.wasAir = air;
-  }
+  /** A frame from the server; it is shown when the playback clock reaches it. */
+  frame(f: Frame) { if (this.course && !this.dead) this.buffer.push(f); }
 
-  /** The attempt is over: the dog goes down where it stopped. */
-  end() { this.dead = true; this.play('Death', 0.1); }
+  /** The attempt is over: once the last frame has been shown, the dog goes down where it stopped. */
+  end() { if (this.buffer.length) this.ending = true; else if (!this.dead) this.finish(); }
 
   /** Between attempts: back to the start line, sitting still. */
   idle() {
+    clearTimeout(this.idleTimer);
     this.course = null; this.clearObstacles();
-    this.last = this.prev = null; this.shown = { z: 0, x: 0, y: 0, t: 0, crouch: 0 }; this.dead = false;
+    this.buffer = []; this.clockT = -1; this.ending = false;
+    this.last = null; this.shown = { z: 0, x: 0, y: 0, t: 0, crouch: 0 }; this.dead = false;
     this.play('Idle', 0.3);
   }
 
@@ -256,20 +278,59 @@ export class Runner3D {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Playback clock. Frames arrive in bursts (the server shares its CPU), so the view runs a little
+   * behind them on its own steady clock and interpolates between the frames around that time.
+   * If the buffer runs dry the clock waits; if it grows long the clock catches up gently.
+   */
+  private advance(dt: number) {
+    const buf = this.buffer;
+    if (!buf.length) return;
+    const newest = buf[buf.length - 1].t;
+    if (this.clockT < 0) {
+      // a new run starts once a little of it is buffered
+      if (newest - buf[0].t < PLAYBACK_DELAY && !this.ending) return;
+      this.clockT = buf[0].t;
+    }
+    const lead = newest - this.clockT;
+    const rate = lead > PLAYBACK_DELAY * 3 ? 1.15 : lead > PLAYBACK_DELAY * 1.5 ? 1.04 : lead < PLAYBACK_DELAY * 0.4 ? 0.92 : 1;
+    this.clockT = Math.min(newest, this.clockT + dt * rate);
+    // everything up to the clock is shown; keep the frame just before it to interpolate from
+    while (buf.length > 1 && buf[1].t <= this.clockT) this.show(buf.shift()!);
+    const a = buf[0], b = buf[1];
+    if (a.t <= this.clockT) this.show(a);
+    const u = b ? Math.max(0, Math.min(1, (this.clockT - a.t) / Math.max(0.001, b.t - a.t))) : 0, lerp = (p: number, q: number) => p + (q - p) * u;
+    this.shown.t = this.clockT;
+    this.shown.z = b ? lerp(a.z, b.z) : a.z;
+    this.shown.x = b ? lerp(a.x, b.x) : a.x;
+    this.shown.y = b ? lerp(a.y, b.y) : a.y;
+    if (this.ending && buf.length === 1 && this.clockT >= newest) this.finish();
+  }
+
+  /** A frame reaches the screen: animation changes, and whoever listens (the HUD). */
+  private show(f: Frame) {
+    if (f.t <= this.shownT) return;
+    this.shownT = f.t;
+    this.last = f;
+    // running up a ramp or along a roof is running; only being off whatever is underneath is a jump
+    const air = !!this.course && f.y > this.course.surface(Math.round(f.x), f.z, f.t) + 0.1;
+    if (air && !this.wasAir) this.play('Gallop_Jump', 0.05);
+    if (!air && this.wasAir) this.play('Gallop', 0.1);
+    this.wasAir = air;
+    this.onShow?.(f);
+  }
+
+  private finish() {
+    this.ending = false; this.dead = true; this.buffer = [];
+    this.play('Death', 0.1);
+    clearTimeout(this.idleTimer);
+    this.idleTimer = window.setTimeout(() => this.idle(), 1700);
+  }
+
   private render() {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.mixer?.update(dt);
-    const f = this.last;
-    if (f && !this.dead) {
-      // extrapolate a little past the newest frame so 50 Hz frames look smooth at any refresh rate
-      const speed = this.prev ? Math.max(0, (f.z - this.prev.z) / Math.max(0.001, f.t - this.prev.t)) : 15;
-      const ahead = Math.min(0.04, (performance.now() - this.lastAt) / 1000);
-      const z = f.z + speed * ahead, k = 1 - Math.exp(-dt * 25);
-      this.shown.z = Math.abs(z - this.shown.z) > 8 ? z : this.shown.z + (z - this.shown.z) * Math.min(1, k * 2);
-      this.shown.t = f.t + ahead;
-      this.shown.x += (f.x - this.shown.x) * k;
-      this.shown.y += (f.y - this.shown.y) * Math.min(1, k * 1.6);
-    }
+    if (!this.dead) this.advance(dt);
     this.shown.crouch += ((this.last?.c && !this.dead ? 1 : 0) - this.shown.crouch) * (1 - Math.exp(-dt * 30));
     const { z, x, y, crouch } = this.shown;
     this.dog.position.set(x * LANE_W, y, -z);
@@ -278,7 +339,7 @@ export class Runner3D {
 
     this.track.position.set(0, 0, -(Math.floor(z / TRACK_PERIOD) * TRACK_PERIOD + 150));
     this.grid.position.z = -(Math.floor(z / 4) * 4 + 150);
-    this.scenery.position.z = -Math.floor(z / SCENERY_EVERY) * SCENERY_EVERY + BEHIND * 2;
+    this.placeScenery(z);
     this.syncObstacles(z, this.shown.t);
 
     // the camera rises with the dog onto train roofs

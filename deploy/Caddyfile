@@ -1,7 +1,7 @@
-# InuFly on its own sslip.io hostname (sslip.io resolves inu-<ip-with-dashes>.sslip.io to that IP,
+# InuFly on its sslip.io hostname (sslip.io resolves inu-<ip-with-dashes>.sslip.io to that IP,
 # so no DNS setup). /ws, /stats and /health go to the node process; /site/* serves the assets the
 # Vercel-hosted index.html loads (built with --base=https://<this host>/site/).
-inu-144-31-153-206.sslip.io {
+inu-195-226-93-13.sslip.io {
 	encode gzip
 	@api path /ws /stats /health
 	handle @api {

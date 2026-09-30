@@ -40,7 +40,7 @@ npm run typecheck
 
 ## Two clocks
 
-The server shares one CPU core with FlappyFly, which runs in real time. So InuFly runs at `Nice=19` and splits its work:
+InuFly splits its work in two, so viewers always get a steady stream even when the CPU is busy:
 
 - **compute**: runs each paid attempt through the connectome as fast as the leftover CPU allows (usually slower than real time) and records every step;
 - **playback**: streams the recorded run to viewers at exactly 50 steps a second.
@@ -68,12 +68,12 @@ Site build variables: `VITE_SERVER_URL` (wss URL of the fly server), `VITE_TOKEN
 
 ## Deploy (as run for inufly.xyz)
 
-- VPS: code in `/opt/inufly` (user `inufly`), env `/etc/inufly.env`, state `/var/lib/inufly`, unit `deploy/inufly.service`, Caddy block `deploy/Caddyfile` (host `inu-144-31-153-206.sslip.io`).
+- VPS: code in `/opt/inufly` (user `inufly`), env `/etc/inufly.env`, state `/var/lib/inufly`, unit `deploy/inufly.service`, Caddy block `deploy/Caddyfile` (host `inu-195-226-93-13.sslip.io`).
 - Site: Vercel serves only `index.html`; its scripts, the dog model and the neuron labels come from the VPS. On the VPS:
 
   ```bash
-  VITE_SERVER_URL=wss://inu-144-31-153-206.sslip.io/ws VITE_TOKEN_CA=<CA> VITE_TOKEN_TICKER=<TICKER> VITE_X_URL=<post> \
-    npx vite build --base=https://inu-144-31-153-206.sslip.io/site/ --outDir dist-remote
+  VITE_SERVER_URL=wss://inu-195-226-93-13.sslip.io/ws VITE_TOKEN_CA=<CA> VITE_TOKEN_TICKER=<TICKER> VITE_X_URL=<post> \
+    npx vite build --base=https://inu-195-226-93-13.sslip.io/site/ --outDir dist-remote
   ```
 
   then deploy `dist-remote/index.html` as the only file of the Vercel project `inufly`.

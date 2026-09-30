@@ -34,13 +34,13 @@ export class SiteApp {
   private stats: Stats | null = null;
   private lastEnd: AttemptRecord | null = null;
   private running = false;
-  private idleTimer = 0;
   private readonly flash = [0, 0, 0, 0];
 
   constructor(root: HTMLElement) {
     root.innerHTML = TEMPLATE;
     this.specimen = new Specimen(this.$<HTMLCanvasElement>('specimen'));
     this.runner = new Runner3D(this.$<HTMLCanvasElement>('runner'));
+    this.runner.onShow = (f) => { this.hud(f.z, f.p, f.a); if (f.a) this.specimen.flap(); };
     this.chart = new LearningChart(this.$<HTMLCanvasElement>('chart'));
     this.token();
     if (X_URL) { const x = this.$<HTMLAnchorElement>('xLink'); x.href = X_URL; x.hidden = false; }
@@ -68,12 +68,9 @@ export class SiteApp {
         this.setStats(m.stats);
         break;
       case 'frame':
-        this.runner.frame(m);
-        this.hud(m.z, m.p, m.a);
-        if (m.a) this.specimen.flap();
+        this.runner.frame(m); // the HUD follows when the frame is shown (see onShow)
         break;
       case 'attempt_start':
-        clearTimeout(this.idleTimer);
         this.running = true;
         this.runner.start(m);
         this.attemptLine(m.n, m.generation, m.sample, m.pop);
@@ -84,7 +81,6 @@ export class SiteApp {
         this.runner.end();
         this.chart.add(m.record);
         this.feed(`Attempt ${m.record.n}: ${metres(m.record.metres)} in ${m.record.seconds.toFixed(1)} s. ${m.record.cause}`);
-        this.idleTimer = window.setTimeout(() => { if (!this.running) this.runner.idle(); }, 1800);
         this.overlay();
         break;
       case 'fee':
