@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 export interface Config {
-  port: number; host: string; adminToken: string | null; feeMint: string | null; feeToken: string | null; perAction: number; capSeconds: number; feeMode: 'balance' | 'transactions'; feeSource: 'mock' | 'solana'; rpcUrl: string; feeWallets: string[]; lamportsPerAttempt: number;
+  port: number; host: string; adminToken: string | null; feeMint: string | null; feeToken: string | null; perAction: number; capSeconds: number; workers: number; feeMode: 'balance' | 'transactions'; feeSource: 'mock' | 'solana'; rpcUrl: string; feeWallets: string[]; lamportsPerAttempt: number;
   mockFeeEveryMs: number; mockTotalLamports: number; pollMs: number; stateFile: string; brainDir: string; corsOrigin: string;
 }
 
@@ -23,7 +23,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!(sol > 0)) throw new Error('SOL_PER_ATTEMPT must be a positive number');
   return {
     port: Number(env.PORT ?? 8788), host: env.HOST ?? '0.0.0.0', adminToken: env.ADMIN_TOKEN?.trim() || null, feeMint: env.FEE_MINT?.trim() || null, feeToken: env.FEE_TOKEN?.trim() || null,
-    capSeconds: Number(env.CAP_SECONDS ?? 180),
+    capSeconds: Number(env.CAP_SECONDS ?? 180), workers: Number(env.WORKERS ?? 0),
     perAction: Number(env.READOUT_PER_ACTION ?? 8), feeMode, feeSource, feeWallets, lamportsPerAttempt: Math.round(sol * 1e9),
     rpcUrl: env.SOLANA_RPC_URL ?? 'https://api.mainnet-beta.solana.com',
     mockFeeEveryMs: Number(env.MOCK_FEE_EVERY_MS ?? 4000), mockTotalLamports: env.MOCK_TOTAL_SOL ? Math.round(Number(env.MOCK_TOTAL_SOL) * 1e9) : Infinity, pollMs: Number(env.POLL_MS ?? (feeMode === 'balance' ? 5000 : 10000)),

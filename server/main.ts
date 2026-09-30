@@ -1,5 +1,5 @@
 // Entry point: `npm run server`. Loads the connectome, restores learning state, starts fees, the
-// compute loop (as fast as it is allowed) and the 50 Hz playback loop.
+// attempt workers and the 50 Hz playback loop.
 import { buildGroups } from '../src/core/sensing';
 import { readFileSync } from 'node:fs';
 import { calibrateReadout, initialTheta } from '../src/core/calibrate';
@@ -11,6 +11,8 @@ import { mockFees } from './fees/mockSource';
 import { BalanceFeeWatcher } from './fees/balanceWatcher';
 import { httpRpc, SolanaFeeWatcher, type FeeEvent } from './fees/solanaWatcher';
 import { resolvePumpCoin } from './fees/pumpToken';
+import { AttemptRunner } from './attempt';
+import { InlineComputer, WorkerComputer } from './computePool';
 import { FlyServer, freshState, type PersistedState } from './flyServer';
 import { loadState, saveState } from './stateStore';
 
@@ -61,9 +63,14 @@ const out = new Broadcaster(
   cfg.corsOrigin, cfg.adminToken
 );
 state.watchers ??= {}; state.balances ??= {};
+const idle = new AttemptRunner(brain, groups, state.readout);
+const workers = cfg.workers || WorkerComputer.defaultSize();
+const computer = workers > 1 ? new WorkerComputer(workers, cfg.brainDir, state.readout) : new InlineComputer(idle);
+log(`computing attempts ${workers > 1 ? `on ${workers} worker threads` : 'in the main thread'}`);
 fly = new FlyServer({
-  brain, groups, state, lamportsPerAttempt: cfg.lamportsPerAttempt, feeSource: cfg.feeSource, feeWallets: cfg.feeWallets,
-  save: (s) => saveState(cfg.stateFile, s), out, capSeconds: cfg.capSeconds
+  computer, idle, state, lamportsPerAttempt: cfg.lamportsPerAttempt, feeSource: cfg.feeSource, feeWallets: cfg.feeWallets,
+  save: (s) => saveState(cfg.stateFile, s), out, capSeconds: cfg.capSeconds,
+  onError: (e) => log('an attempt failed to compute, it goes back in the queue:', e instanceof Error ? e.message : e)
 });
 
 let stopFees: () => void = () => undefined;
@@ -114,8 +121,8 @@ if (cfg.feeSource === 'mock') {
 log(`1 attempt = ${cfg.lamportsPerAttempt / 1e9} SOL`);
 
 // playback: fixed 50 Hz; catch up at most 5 steps, drop further lag rather than spiral.
-// The idle brain between attempts only runs for someone watching: the CPU is shared with FlappyFly.
-let next = performance.now(), running = true, computeMs = 0, computed = 0;
+// The idle brain between runs only ticks for someone watching.
+let next = performance.now(), running = true;
 const playback = () => {
   if (!running) return;
   const now = performance.now();
@@ -123,23 +130,16 @@ const playback = () => {
   if (now - next > 200) next = now;
   setTimeout(playback, Math.max(0, next - performance.now()));
 };
-// compute: brain steps in slices of at most 12 ms, so playback timers still fire on time
-const compute = () => {
-  if (!running) return;
-  const t0 = performance.now();
-  while (fly!.wantsCompute && performance.now() - t0 < 12) { fly!.computeStep(); computed++; }
-  computeMs += performance.now() - t0;
-  setTimeout(compute, fly!.wantsCompute ? 0 : 100);
-};
-// one health line a minute: how fast attempts compute compared to real time, and who is watching
+// one health line a minute: how many seconds of running were computed per minute, and who is watching
+let lastRunSeconds = fly.computedSeconds;
 setInterval(() => {
-  const s = fly!.stats();
-  if (computed) log(`computed ${computed} steps at ${(computeMs / computed).toFixed(1)} ms each (${((computed * 20) / 60_000).toFixed(2)}× real time)`);
+  const s = fly!.stats(), done = fly!.computedSeconds - lastRunSeconds;
+  lastRunSeconds = fly!.computedSeconds;
+  if (done) log(`computed ${done.toFixed(0)} s of running this minute (${(done / 60).toFixed(2)}× real time)`);
   log(`${out.viewers} viewers, attempts ${s.attempts}, queue ${s.queue}, generation ${s.generation}, best ${s.bestMetres} m`);
-  computeMs = 0; computed = 0;
 }, 60_000).unref();
 playback();
-compute();
+fly.pump();
 
 const port = await out.listen(cfg.port, cfg.host);
 log(`listening on ${cfg.host}:${port} (ws /ws, GET /health, GET /stats)`);
@@ -147,7 +147,7 @@ log(`listening on ${cfg.host}:${port} (ws /ws, GET /health, GET /stats)`);
 const shutdown = async () => {
   running = false; stopFees();
   saveState(cfg.stateFile, fly!.snapshot());
-  await out.close();
+  await Promise.all([out.close(), computer.close()]);
   log('state saved, bye');
   process.exit(0);
 };

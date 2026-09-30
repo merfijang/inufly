@@ -4,6 +4,8 @@ import { buildGroups } from '../src/core/sensing';
 import { tinyBrain } from '../src/core/testing';
 import type { ServerMessage } from '../src/shared/protocol';
 import { Broadcaster } from './broadcast';
+import { AttemptRunner } from './attempt';
+import { InlineComputer } from './computePool';
 import { FlyServer, freshState } from './flyServer';
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -11,11 +13,12 @@ afterEach(async () => { await cleanup?.(); cleanup = undefined; });
 
 describe('server over WebSocket', () => {
   it('greets a viewer and streams an attempt, frames and activity', async () => {
-    const brain = tinyBrain();
+    const brain = tinyBrain(), readout = { names: ['DNp01 L'], mean: [0], std: [1], heads: [[0], [0], [0], [0]] };
+    const runner = new AttemptRunner(brain, buildGroups(brain.meta), readout);
     let fly: FlyServer | undefined;
     const out = new Broadcaster({ hello: () => fly!.hello(), stats: () => fly!.stats() });
     fly = new FlyServer({
-      brain, groups: buildGroups(brain.meta), state: freshState({ names: ['DNp01 L'], mean: [0], std: [1], heads: [[0], [0], [0], [0]] }, [0, -20, 0, -20, 0, -20, 0, -20]), capSeconds: 1, pauseTicks: 0,
+      computer: new InlineComputer(runner), idle: runner, state: freshState(readout, [0, -20, 0, -20, 0, -20, 0, -20]), capSeconds: 1, pauseTicks: 0,
       lamportsPerAttempt: 100, feeSource: 'mock', feeWallets: [], save: () => undefined, out
     });
     const port = await out.listen(0);
@@ -33,7 +36,7 @@ describe('server over WebSocket', () => {
     expect(json[0]).toMatchObject({ type: 'hello', displayCount: fly.displayCount });
 
     fly.addFee({ signature: 'x', lamports: 100, slot: 0, blockTime: null });
-    while (fly.wantsCompute) fly.computeStep();
+    await fly.settle();
     for (let i = 0; i < 200; i++) fly.playTick(false);
     await new Promise((ok) => setTimeout(ok, 100));
     const types = new Set(json.map((m) => m.type));

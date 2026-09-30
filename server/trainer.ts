@@ -23,6 +23,12 @@ export class Trainer {
 
   private gaussian() { let u = 0; while (!u) u = this.rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * this.rand()); }
 
+  /** Is there a sample of this generation that is neither reported nor already out? */
+  canIssue() { return this.state.fitness.some((f, i) => f === null && !this.issued.has(i)); }
+
+  /** A sample that was handed out but never ran (its worker failed): hand it out again later. */
+  unissue(index: number) { this.issued.delete(index); }
+
   next(): Sample {
     const s = this.state;
     if (!s.noise.length) {

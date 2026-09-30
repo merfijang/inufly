@@ -60,6 +60,7 @@ Learning happens when a run finishes computing. Viewers see each run a little af
 | `ADMIN_TOKEN` | – | enables `POST /admin/attempts?n=…` with header `x-admin-token` |
 | `READOUT_PER_ACTION` | `8` | populations each move is read from (only used at the first start) |
 | `CAP_SECONDS` | `180` | longest run |
+| `WORKERS` | cores − 1 | attempts computed at once, each in its own thread with its own copy of the brain (~0.5 GB) |
 | `PORT` / `HOST` | `8788` / `0.0.0.0` | |
 | `STATE_FILE` | `data/state.json` | learning state, queue, history |
 | `BRAIN_DIR` | `brain` | connectome files |
