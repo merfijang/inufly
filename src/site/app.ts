@@ -3,6 +3,7 @@ import { pickDisplayNeurons } from '../shared/display';
 import { decodeBits, type AttemptRecord, type ServerMessage, type Stats } from '../shared/protocol';
 import { LearningChart } from './chart';
 import { brainMetaUrl, connect, serverUrl } from './net';
+import { DogSpecimen } from './dogSpecimen';
 import { Runner3D } from './runner3d';
 import { REGION_COLORS, ROLE_COLORS, Specimen } from './specimen';
 
@@ -27,6 +28,7 @@ export class SiteApp {
   private readonly $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
   private specimen!: Specimen;
   private runner!: Runner3D;
+  private dog!: DogSpecimen;
   private chart!: LearningChart;
   private bits = new Uint8Array(0);
   private meta: NeuronMeta | null = null;
@@ -40,7 +42,8 @@ export class SiteApp {
     root.innerHTML = TEMPLATE;
     this.specimen = new Specimen(this.$<HTMLCanvasElement>('specimen'));
     this.runner = new Runner3D(this.$<HTMLCanvasElement>('runner'));
-    this.runner.onShow = (f) => { this.hud(f.z, f.p, f.a); if (f.a) this.specimen.flap(); };
+    this.dog = new DogSpecimen(this.$<HTMLCanvasElement>('dogSpecimen'), `${import.meta.env.BASE_URL}models/shiba.glb`);
+    this.runner.onShow = (f) => { this.hud(f.z, f.p, f.a); if (f.a) { this.specimen.flap(); this.dog.act(f.a); } };
     this.chart = new LearningChart(this.$<HTMLCanvasElement>('chart'));
     this.token();
     if (X_URL) { const x = this.$<HTMLAnchorElement>('xLink'); x.href = X_URL; x.hidden = false; }
@@ -71,12 +74,14 @@ export class SiteApp {
         this.runner.frame(m); // the HUD follows when the frame is shown (see onShow)
         break;
       case 'attempt_start':
+        this.dog.setRunning(true);
         this.running = true;
         this.runner.start(m);
         this.attemptLine(m.n, m.generation, m.sample, m.pop);
         this.overlay();
         break;
       case 'attempt_end':
+        this.dog.setRunning(false);
         this.running = false; this.lastEnd = m.record;
         this.runner.end();
         this.chart.add(m.record);
@@ -223,7 +228,8 @@ const TEMPLATE = `
       </figure>
       <figure class="specimen">
         <canvas id="specimen" aria-label="The fly's neurons, lit as they fire"></canvas>
-        <figcaption id="specimenNote">Every dot is one real neuron of the fly running the dog, drawn where its part of the nervous system sits. A region glows when it fires more than usual.</figcaption>
+        <canvas id="dogSpecimen" class="dog" aria-label="The dog the fly drives; the part each command moves lights up"></canvas>
+        <figcaption id="specimenNote">Above, every dot is one real neuron of the fly, drawn where its part of the nervous system sits; a region glows when it fires more than usual. Below, the dog it drives: the legs light up when the fly jumps, the back when it rolls, the head when it turns.</figcaption>
         <ul class="legend">${LEGEND}</ul>
       </figure>
     </div>
