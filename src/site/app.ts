@@ -228,8 +228,8 @@ const TEMPLATE = `
       </figure>
       <figure class="specimen">
         <canvas id="specimen" aria-label="The fly's neurons, lit as they fire"></canvas>
-        <canvas id="dogSpecimen" class="dog" aria-label="The dog the fly drives; the part each command moves lights up"></canvas>
-        <figcaption id="specimenNote">Above, every dot is one real neuron of the fly, drawn where its part of the nervous system sits; a region glows when it fires more than usual. Below, the dog it drives: the legs light up when the fly jumps, the back when it rolls, the head when it turns.</figcaption>
+        <canvas id="dogSpecimen" class="dog" aria-label="The Shiba Inu the fly drives"></canvas>
+        <figcaption id="specimenNote">Every dot is one real neuron of the fly running the dog, drawn where its part of the nervous system sits. A region glows when it fires more than usual. Below it, the dog it drives.</figcaption>
         <ul class="legend">${LEGEND}</ul>
       </figure>
     </div>
